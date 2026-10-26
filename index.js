@@ -103,6 +103,7 @@ export function apply(ctx, config = {}) {
   };
 
   const schedule_ctx = { ctx: null };
+  const picker_ctx = { ctx: null };
   const create_schedule = async (session_id, settings, signal) => {
     const schedule = schedule_ctx.ctx;
     if (!schedule) throw new Error('当前部署没有排程服务，无法开启每日任务。');
@@ -153,6 +154,20 @@ export function apply(ctx, config = {}) {
     return { settings: next, schedule };
   };
 
+  /** Which directory-selection interaction this host offers (native dialog or in-app browser). */
+  const picker_capability = () => {
+    try {
+      const picker = picker_ctx.ctx;
+      if (!picker?.capability) return { kind: 'none' };
+      const capability = picker.capability();
+      if (capability?.kind === 'native') return { kind: 'native' };
+      if (capability?.kind === 'browse') return { kind: 'browse' };
+      return { kind: 'none' };
+    } catch {
+      return { kind: 'none' };
+    }
+  };
+
   const panel_state = async () => {
     if (!store.get()) await store.load();
     if (dep.checking) await refresh_dep();
@@ -169,6 +184,7 @@ export function apply(ctx, config = {}) {
       log,
       schedule: { active: schedule.length > 0, id: schedule[0]?.id ?? '', time: settings.daily_time, time_zone: settings.time_zone, next: schedule[0]?.scheduledAt ?? null },
       session_bound: Boolean(settings.session_id),
+      picker: picker_capability(),
       version: '0.2.0',
     };
   };
@@ -291,6 +307,11 @@ export function apply(ctx, config = {}) {
   ctx.inject(['schedule'], injected => {
     schedule_ctx.ctx = injected.schedule;
   });
+  // Optional: the GUI host mounts a directory picker (native dialog on a local
+  // desktop, in-app browser otherwise). Without it the panel keeps manual input.
+  ctx.inject(['directoryPicker'], injected => {
+    picker_ctx.ctx = injected.directoryPicker;
+  });
 
   /* ── Web API for the settings panel ─────────────────────── */
 
@@ -306,8 +327,30 @@ export function apply(ctx, config = {}) {
   });
 
   const route = async (req, res, url) => {
+    // This route bypasses the host's token auth, so keep it to same-origin callers:
+    // a foreign Host/Origin or a non-JSON POST (simple request) is refused, which
+    // blocks CSRF from other local pages while the settings UI keeps working.
+    const host = String(req.headers.host ?? '');
+    if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host)) return json(res, 403, { ok: false, message: '仅允许本机同源访问。' });
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(String(origin))) return json(res, 403, { ok: false, message: '跨站请求已拒绝。' });
+    if (req.method === 'POST' && !/^application\/json/i.test(String(req.headers['content-type'] ?? ''))) {
+      return json(res, 415, { ok: false, message: 'POST 必须是 application/json。' });
+    }
     const path = url.pathname.slice(API_PREFIX.length) || '/';
     if (req.method === 'GET' && path === '/state') return json(res, 200, await panel_state());
+    if (req.method === 'GET' && path === '/picker/list') {
+      const picker = picker_ctx.ctx;
+      const capability = picker?.capability?.();
+      if (capability?.kind !== 'browse') return json(res, 409, { ok: false, code: 'PICKER_NOT_BROWSE', message: '当前部署的目录选择器不是应用内浏览模式。' });
+      const listing = await capability.list(url.searchParams.get('path') || undefined);
+      return json(res, 200, {
+        ok: true,
+        path: listing?.path ?? '',
+        entries: (listing?.entries ?? []).map(entry => ({ path: entry.path, hidden: Boolean(entry.hidden) })),
+        crumbs: (listing?.crumbs ?? []).map(crumb => ({ path: crumb.path, name: crumb.name ?? '' })),
+      });
+    }
     if (req.method === 'GET' && path === '/login/qr.png') {
       const png = service.qr_session?.qr_png;
       if (!png) return json(res, 404, { ok: false, message: '没有可展示的二维码，请先生成。' });
@@ -319,6 +362,19 @@ export function apply(ctx, config = {}) {
     if (path === '/settings') {
       const result = await apply_patch(body);
       return json(res, 200, { ok: true, ...result, dep });
+    }
+    if (path === '/picker/pick') {
+      const capability = picker_ctx.ctx?.capability?.();
+      if (capability?.kind !== 'native') return json(res, 409, { ok: false, code: 'PICKER_NOT_NATIVE', message: '当前部署的目录选择器不是系统对话框。' });
+      const selected = await capability.pick();
+      return json(res, 200, { ok: true, path: typeof selected === 'string' ? selected : '' });
+    }
+    if (path === '/picker/create') {
+      const capability = picker_ctx.ctx?.capability?.();
+      if (capability?.kind !== 'browse') return json(res, 409, { ok: false, code: 'PICKER_NOT_BROWSE', message: '当前部署的目录选择器不是应用内浏览模式。' });
+      if (typeof body.name !== 'string' || !body.name.trim()) return json(res, 400, { ok: false, message: '目录名不能为空。' });
+      const created = await capability.createDirectory(String(body.path ?? ''), body.name.trim());
+      return json(res, 200, { ok: true, path: typeof created === 'string' ? created : (created?.path ?? '') });
     }
     if (path === '/deps/check') return json(res, 200, { ok: true, dep: await refresh_dep() });
     if (path === '/deps/install') {

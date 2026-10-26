@@ -49,6 +49,12 @@ window.__ModuleLoader__.load({
 [data-nd-msg][data-kind=err]{background:rgba(217,48,37,.12);color:#d93025}
 [data-nd-qr]{width:190px;height:190px;border-radius:10px;background:#fff;padding:8px;border:1px solid rgba(128,128,128,.25)}
 [data-nd-grid]{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+[data-nd-modal]{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9000}
+[data-nd-dialog]{width:min(560px,92vw);max-height:78vh;overflow:auto;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#111);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 18px 48px rgba(0,0,0,.28)}
+[data-nd-list]{border:1px solid rgba(128,128,128,.25);border-radius:10px;max-height:46vh;overflow:auto}
+[data-nd-item]{padding:7px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid rgba(128,128,128,.12);word-break:break-all}
+[data-nd-item]:hover{background:rgba(128,128,128,.12)}
+[data-nd-crumbs]{display:flex;gap:6px;flex-wrap:wrap}
 `;
 
     const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
@@ -68,6 +74,7 @@ window.__ModuleLoader__.load({
       const [message, setMessage] = React.useState(null);
       const [qrUrl, setQrUrl] = React.useState('');
       const [depText, setDepText] = React.useState('');
+      const [picker, setPicker] = React.useState({ open: false, listing: null, error: '' });
 
       const applyState = (next) => {
         setState(next);
@@ -165,6 +172,27 @@ window.__ModuleLoader__.load({
         return result;
       }, enable ? '每日任务已开启。' : '每日任务已停止。');
 
+      const browseTo = async (target) => {
+        try {
+          const listing = await jget(`/picker/list${target ? `?path=${encodeURIComponent(target)}` : ''}`);
+          setPicker({ open: true, listing, error: '' });
+        } catch (error) {
+          setPicker((current) => ({ ...current, open: true, error: error.message }));
+        }
+      };
+
+      /** Native OS dialog on a local desktop; in-app browser otherwise. */
+      const chooseLogDir = () => action('pick', async () => {
+        const kind = state.picker?.kind ?? 'none';
+        if (kind === 'native') {
+          const result = await jpost('/picker/pick', {});
+          if (result.path) setForm((current) => ({ ...current, log_dir: result.path }));
+          return result;
+        }
+        if (kind === 'browse') return browseTo();
+        throw new Error('该部署没有目录选择器，请手动填写日志目录路径。');
+      }, '已选择日志目录，点“保存设置”生效。');
+
       if (!form || !state) {
         return h('div', { 'data-nd-page': '' }, h('div', { 'data-nd-note': '' }, '正在读取插件状态…'));
       }
@@ -227,7 +255,12 @@ window.__ModuleLoader__.load({
           h('div', { 'data-nd-row': '' },
             h('span', { 'data-nd-label': '' }, '日志目录'),
             h('input', { ...INPUT, value: form.log_dir, onChange: set('log_dir') }),
+            h('button', { 'data-nd-btn': '', disabled: busy === 'pick' || state.picker?.kind === 'none', onClick: chooseLogDir }, busy === 'pick' ? '选择中…' : '浏览…'),
           ),
+          h('div', { 'data-nd-note': '' },
+            state.picker?.kind === 'native' ? '点“浏览…”打开系统文件夹对话框，选中的路径会填到上面。'
+              : state.picker?.kind === 'browse' ? '点“浏览…”在应用内逐级浏览目录。'
+                : '该部署没有目录选择器，请手动填写日志目录路径。'),
           h('div', { 'data-nd-row': '' },
             h('span', { 'data-nd-label': '' }, '试听时长'),
             h('input', { ...INPUT, type: 'number', min: 5, max: 120, step: 5, value: form.preview_seconds, onChange: set('preview_seconds'), style: { maxWidth: '110px' } }),
@@ -257,6 +290,33 @@ window.__ModuleLoader__.load({
         ),
 
         message ? h('div', { 'data-nd-msg': '', 'data-kind': message.kind }, message.text) : null,
+
+        picker.open ? h('div', {
+          'data-nd-modal': '',
+          onClick: (event) => { if (event.target === event.currentTarget) setPicker({ open: false, listing: null, error: '' }); },
+        },
+          h('div', { 'data-nd-dialog': '' },
+            h('div', { 'data-nd-h': '' }, '选择日志目录'),
+            h('div', { 'data-nd-note': '' }, `当前目录：${picker.listing?.path || '—'}`),
+            h('div', { 'data-nd-crumbs': '' }, (picker.listing?.crumbs ?? []).map((crumb, index) => h('button', {
+              key: `crumb-${index}`, 'data-nd-btn': '', onClick: () => browseTo(crumb.path),
+            }, crumb.name || crumb.path))),
+            h('div', { 'data-nd-list': '' }, (picker.listing?.entries ?? []).filter(entry => !entry.hidden).map(entry => h('div', {
+              key: entry.path, 'data-nd-item': '', onClick: () => browseTo(entry.path),
+            }, entry.path))),
+            picker.error ? h('div', { 'data-nd-msg': '', 'data-kind': 'err' }, picker.error) : null,
+            h('div', { 'data-nd-row': '' },
+              h('button', {
+                'data-nd-btn': '', 'data-primary': '',
+                onClick: () => {
+                  if (picker.listing?.path) setForm((current) => ({ ...current, log_dir: picker.listing.path }));
+                  setPicker({ open: false, listing: null, error: '' });
+                },
+              }, '选择此目录'),
+              h('button', { 'data-nd-btn': '', onClick: () => setPicker({ open: false, listing: null, error: '' }) }, '取消'),
+            ),
+          ),
+        ) : null,
 
         h('div', { 'data-nd-note': '' }, '所有可变项都在这里配置，立即生效并保存到本机；重启 Harness 后仍然保留。'),
       );
