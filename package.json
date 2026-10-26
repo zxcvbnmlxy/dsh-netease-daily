@@ -1,6 +1,6 @@
 {
   "name": "dsh-netease-daily",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness 网易云每日试听与歌曲推荐插件",
   "type": "module",
   "main": "index.js",
@@ -18,6 +18,9 @@
     "preview": "node scripts/cli.js prepare"
   },
   "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "plugin", "cordis", "netease", "netease-cloud-music", "music", "daily-recommendation"],
+  "repository": {"type": "git", "url": "git+https://github.com/zxcvbnmlxy/dsh-netease-daily.git"},
+  "homepage": "https://github.com/zxcvbnmlxy/dsh-netease-daily#readme",
+  "bugs": {"url": "https://github.com/zxcvbnmlxy/dsh-netease-daily/issues"},
   "dependencies": {"@neteasecloudmusicapienhanced/api": "4.41.1"},
   "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
   "publishConfig": {"access": "public"},

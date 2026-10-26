@@ -4,9 +4,25 @@
 
 **这里的“听歌”是本机播放器真实播放。** DeepSeek 根据歌曲资料、可用歌词和你的偏好写推荐理由；文本模型不会因为播放了音乐就获得音频理解能力。没有播放器、歌曲不可播或试听失败时，仍可推荐，但明确标记「未完成试听」。不提交虚假播放记录，不绕过会员 / 版权限制，不自动修改收藏。
 
-## 安装到本机 Desktop
+## 安装
 
-已针对本机 Harness Desktop **0.2.1-rc.2** 的真实工具和排程接口编写。使用 Node.js 22.19+（建议 24），无需另填 DeepSeek API Key，使用当前 Harness 会话的模型。
+已针对 Harness Desktop **0.2.1-rc.2** 的真实工具和排程接口编写。使用 Node.js 22.19+（建议 24），无需另填 DeepSeek API Key，使用当前 Harness 会话的模型。
+
+### 从 npm 安装（推荐）
+
+包名 `dsh-netease-daily`，已发布到 npm：
+
+```powershell
+dsh plugin --profile <profile> add dsh-netease-daily
+```
+
+在 **Harness 的对话里**（profile 已启用 `plugin_manager` 时）也可以直接说：
+
+> 安装 bundle `dsh-netease-daily`，然后确认 `netease_status` 工具可用。
+
+源码与市场登记：<https://github.com/zxcvbnmlxy/dsh-netease-daily>。需要固定代码版本时用 `github:zxcvbnmlxy/dsh-netease-daily#<commit>` 安装。
+
+### 从本地目录安装（开发版）
 
 1. 在本目录运行：
 
@@ -14,15 +30,18 @@
    npm.cmd ci --ignore-scripts
    ```
 
-2. 打开 Harness Desktop 的插件管理，使用本地插件 / 本地目录安装，选择本目录。如果界面没有本地安装入口，在 **Harness 的对话里**发送下面这段，请它调用自带的 `plugin_manager` 安装：
+2. 打开 Harness Desktop 的插件管理，使用本地插件 / 本地目录安装，选择本目录；如果界面没有本地安装入口，在 **Harness 的对话里**请它调用自带的 `plugin_manager` 安装：
 
-   > 安装本地 bundle `D:\deepseek插件`，包名 `dsh-netease-daily`，然后确认 `netease_status` 工具可用。
+   > 安装本地 bundle（指向本目录），包名 `dsh-netease-daily`，然后确认 `netease_status` 工具可用。
 
    根据 Harness 提示重载或重启。不要手工替换 Desktop 的核心包。
 
-3. 在本目录运行 `npm.cmd run login`，用网易云 App 扫描浏览器中的二维码并确认。网页会自动检查登录。也可以直接在 Harness 里说：
+3. 扫码登录网易云（任选其一）：
 
-   > 调用 netease_login_start，把本机二维码图片显示给我；我扫码确认后，再调用 netease_login_check。
+   - 在本目录运行 `npm.cmd run login`，用网易云 App 扫描浏览器中的二维码并确认，网页会自动检查登录；
+   - 或者直接在 Harness 里说：
+
+     > 调用 netease_login_start，把本机二维码图片显示给我；我扫码确认后，再调用 netease_login_check。
 
 4. 登录后，在准备接收日报的 **Harness 对话里**说：
 
