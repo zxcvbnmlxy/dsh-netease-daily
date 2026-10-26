@@ -1,7 +1,7 @@
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const routes = new Set(['login_qr_key', 'login_qr_create', 'login_qr_check', 'login_status', 'recommend_songs', 'lyric', 'song_url_v1']);
+const routes = new Set(['login_qr_key', 'login_qr_create', 'login_qr_check', 'login_status', 'recommend_songs', 'lyric', 'song_url_v1', 'cloudsearch', 'song_detail']);
 
 function api_error(code, message) { return Object.assign(new Error(message), { code }); }
 function abort_error() { return Object.assign(new Error('网易云请求已取消。'), { name: 'AbortError', code: 'ABORT_ERR' }); }

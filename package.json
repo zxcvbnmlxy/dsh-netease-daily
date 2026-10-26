@@ -1,15 +1,16 @@
 {
   "name": "dsh-netease-daily",
-  "version": "0.1.2",
-  "description": "DeepSeek Harness 网易云每日试听与歌曲推荐插件",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness 每日听歌插件：设置页配置、静默播放、按描述推荐与 AI 评价",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "files": ["index.js", "src", "scripts", "cordis.patch.yml", "locale", "icon.svg", "README.md", "LICENSE"],
+  "files": ["index.js", "client.js", "src", "scripts", "cordis.patch.yml", "locale", "icon.svg", "README.md", "LICENSE"],
   "engines": {"node": ">=22.19.0", "dsh": ">=0.2.1-rc.2 <0.3.0"},
   "scripts": {
     "test": "node --test",
@@ -17,12 +18,18 @@
     "status": "node scripts/cli.js status",
     "preview": "node scripts/cli.js prepare"
   },
-  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "plugin", "cordis", "netease", "netease-cloud-music", "music", "daily-recommendation"],
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "plugin", "cordis", "netease", "netease-cloud-music", "music", "daily-recommendation", "silent-playback"],
   "repository": {"type": "git", "url": "git+https://github.com/zxcvbnmlxy/dsh-netease-daily.git"},
   "homepage": "https://github.com/zxcvbnmlxy/dsh-netease-daily#readme",
   "bugs": {"url": "https://github.com/zxcvbnmlxy/dsh-netease-daily/issues"},
   "dependencies": {"@neteasecloudmusicapienhanced/api": "4.41.1"},
-  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "dsh": {
+    "bundle": {"patch": "./cordis.patch.yml"},
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-settings"]
+    }
+  },
   "publishConfig": {"access": "public"},
   "license": "MIT"
 }

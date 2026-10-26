@@ -3,6 +3,4 @@
       name: dsh-netease-daily
       config:
         preview_seconds: 30
-        player_path: mpv
-        volume: 25
         avoid_days: 14

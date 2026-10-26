@@ -3,7 +3,10 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
-const routes = new Set(['login_qr_key', 'login_qr_create', 'login_qr_check', 'login_status', 'recommend_songs', 'lyric', 'song_url_v1']);
+const routes = new Set([
+  'login_qr_key', 'login_qr_create', 'login_qr_check', 'login_status',
+  'recommend_songs', 'lyric', 'song_url_v1', 'cloudsearch', 'song_detail',
+]);
 
 // song_url_v1 encrypts with xeapi, which needs a public key the upstream package
 // normally fetches during its own server start-up. Direct library use skips that
