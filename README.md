@@ -8,19 +8,27 @@
 
 已针对 Harness Desktop **0.2.1-rc.2** 的真实工具和排程接口编写。使用 Node.js 22.19+（建议 24），无需另填 DeepSeek API Key，使用当前 Harness 会话的模型。
 
-### 从 npm 安装（推荐）
-
-包名 `dsh-netease-daily`，已发布到 npm：
+### 从 GitHub 安装（推荐，0.2.0）
 
 ```powershell
-dsh plugin --profile <profile> add dsh-netease-daily
+dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily#333d283
+```
+
+或安装不带固定提交的最新 main：
+
+```powershell
+dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily
 ```
 
 在 **Harness 的对话里**（profile 已启用 `plugin_manager` 时）也可以直接说：
 
-> 安装 bundle `dsh-netease-daily`，然后确认 `netease_status` 工具可用。
+> 安装 bundle `github:zxcvbnmlxy/dsh-netease-daily`，然后确认 `netease_status` 工具可用。
 
-源码与市场登记：<https://github.com/zxcvbnmlxy/dsh-netease-daily>。需要固定代码版本时用 `github:zxcvbnmlxy/dsh-netease-daily#<commit>` 安装。
+### 关于 npm
+
+`dsh-netease-daily` 在 npm 上只到 **0.1.2**（旧版：无设置页、试听会外放声音）。0.2.0 起请用上面的 GitHub 方式安装；npm 发布受账号 2FA 策略限制，暂时不更新。
+
+市场登记：<https://dsh-plugin.market/plugin/zxcvbnmlxy/dsh-netease-daily>（扫描提交 `333d283`）。
 
 ### 从本地目录安装（开发版）
 
