@@ -186,12 +186,17 @@ window.__ModuleLoader__.load({
         const kind = state.picker?.kind ?? 'none';
         if (kind === 'native') {
           const result = await jpost('/picker/pick', {});
-          if (result.path) setForm((current) => ({ ...current, log_dir: result.path }));
+          if (result.path) {
+            setForm((current) => ({ ...current, log_dir: result.path }));
+            setMessage({ kind: 'ok', text: '已选择日志目录，点“保存设置”生效。' });
+          } else {
+            setMessage({ kind: 'ok', text: '已取消选择，日志目录未改变。' });
+          }
           return result;
         }
         if (kind === 'browse') return browseTo();
         throw new Error('该部署没有目录选择器，请手动填写日志目录路径。');
-      }, '已选择日志目录，点“保存设置”生效。');
+      });
 
       if (!form || !state) {
         return h('div', { 'data-nd-page': '' }, h('div', { 'data-nd-note': '' }, '正在读取插件状态…'));

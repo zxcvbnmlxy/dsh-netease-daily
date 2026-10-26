@@ -82,6 +82,9 @@ function timing(args) {
   return { time, time_zone };
 }
 const owned = record => typeof record.prompt === 'string' && record.prompt.startsWith(`${marker}\n`);
+// Several host services read `signal.aborted` directly, so calls that do not
+// originate from a tool invocation (HTTP handlers) must pass a real signal.
+const INERT_SIGNAL = new AbortController().signal;
 
 export function apply(ctx, config = {}) {
   const cfg = configuration(config);
@@ -104,9 +107,10 @@ export function apply(ctx, config = {}) {
 
   const schedule_ctx = { ctx: null };
   const picker_ctx = { ctx: null };
-  const create_schedule = async (session_id, settings, signal) => {
+  const create_schedule = async (session_id, settings, signal = INERT_SIGNAL) => {
     const schedule = schedule_ctx.ctx;
     if (!schedule) throw new Error('当前部署没有排程服务，无法开启每日任务。');
+    signal = signal ?? INERT_SIGNAL;
     const existing = (await schedule.list({ sessionId: session_id })).filter(owned);
     const daily = { time: settings.daily_time, time_zone: settings.time_zone };
     let record;
@@ -366,8 +370,24 @@ export function apply(ctx, config = {}) {
     if (path === '/picker/pick') {
       const capability = picker_ctx.ctx?.capability?.();
       if (capability?.kind !== 'native') return json(res, 409, { ok: false, code: 'PICKER_NOT_NATIVE', message: '当前部署的目录选择器不是系统对话框。' });
-      const selected = await capability.pick();
-      return json(res, 200, { ok: true, path: typeof selected === 'string' ? selected : '' });
+      // The native backend reads signal.aborted directly, and it aborts the OS
+      // dialog when the panel goes away. Always hand it a real signal.
+      const controller = new AbortController();
+      const on_close = () => { try { controller.abort(); } catch {} };
+      res.once('close', on_close);
+      try {
+        const selected = await capability.pick(controller.signal);
+        return json(res, 200, { ok: true, path: typeof selected === 'string' ? selected : '' });
+      } catch (error) {
+        if (controller.signal.aborted) { try { res.end(); } catch {} return; }
+        return json(res, 500, {
+          ok: false,
+          code: error?.code ?? 'PICKER_FAILED',
+          message: `打开目录选择器失败：${error?.message ?? String(error)}`,
+        });
+      } finally {
+        res.removeListener('close', on_close);
+      }
     }
     if (path === '/picker/create') {
       const capability = picker_ctx.ctx?.capability?.();

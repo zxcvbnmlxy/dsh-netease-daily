@@ -123,7 +123,10 @@ export class MusicService {
         result.logged_in = Boolean(profile?.userId);
         if (result.logged_in) result.nickname = String(profile.nickname || '网易云用户');
         else result.message = '登录已失效，请重新扫码。';
-      } catch { signal?.throwIfAborted(); result.message = '无法验证登录状态，请检查网络后重试。'; }
+      } catch (error) {
+        signal?.throwIfAborted();
+        result.message = error?.code === 'AUTH_REQUIRED' ? '登录已失效，请重新扫码。' : '无法验证登录状态，请检查网络后重试。';
+      }
       return result;
     });
   }
@@ -258,11 +261,6 @@ export class MusicService {
         } catch (error) { signal?.throwIfAborted(); throw error; }
       }
       const picked = tracks.slice(0, 6);
-      const day = state.days[date] ?? (state.days[date] = { date, created_at: this.now().toISOString(), source: text ? '按描述推荐' : '网易云每日推荐', tracks: [], recommendations: [], evaluations: {} });
-      const known = new Set((day.tracks ?? []).map(track => track.id));
-      for (const track of picked) if (!known.has(track.id)) day.tracks.push(track);
-      if (!day.source) day.source = text ? '按描述推荐' : '网易云每日推荐';
-      await this.persist(state);
       for (const track of picked) {
         signal?.throwIfAborted();
         if (track.lyric_excerpt) continue;
@@ -272,6 +270,12 @@ export class MusicService {
         } catch { track.lyric_note = '歌词暂不可用。'; }
         await this.cached(track);
       }
+      // Persist only after the lyric pass: an aborted plan leaves no half-written day.
+      const day = state.days[date] ?? (state.days[date] = { date, created_at: this.now().toISOString(), source: text ? '按描述推荐' : '网易云每日推荐', tracks: [], recommendations: [], evaluations: {} });
+      const known = new Set((day.tracks ?? []).map(track => track.id));
+      for (const track of picked) if (!known.has(track.id)) day.tracks.push(track);
+      if (!day.source) day.source = text ? '按描述推荐' : '网易云每日推荐';
+      await this.persist(state);
       return { date, description: text, tracks: picked, log_dir: this.logger?.dir?.() ?? '', silent: true };
     });
   }
@@ -320,7 +324,7 @@ export class MusicService {
       if (!text) throw new Error('评价内容不能为空。');
       if (text.length > 1200) throw new Error('评价最多 1200 字。');
       const score = rating === undefined || rating === null ? null : Number(rating);
-      if (score !== null && (!Number.isFinite(score) || score < 1 || score > 5)) throw new Error('评分必须是 1 到 5。');
+      if (score !== null && (!Number.isFinite(score) || !Number.isInteger(score) || score < 1 || score > 5)) throw new Error('评分必须是 1 到 5 的整数。');
       const cfg = this.settings();
       const state = await this.load();
       const date = local_date(this.now(), cfg.time_zone);
@@ -378,24 +382,25 @@ export class MusicService {
         ids.add(id);
         return { id, reason: item.reason.trim() };
       });
-      day.recommendations = cleaned;
-      day.completed_at = this.now().toISOString();
-      await this.persist(state);
       const body = [`- 日期：${date}`, `- 推荐依据：${markdown_text(cfg.description || '你的网易云每日推荐')}`, ''];
       for (const item of cleaned) {
         const track = day.tracks.find(song => song.id === item.id);
         body.push(`- [${markdown_text(track.name)}](${track.url}) — ${markdown_text(track.artists.join(' / '))}`, `  ${markdown_text(item.reason)}`, '');
       }
+      // Write the report before marking the day completed: a failed log write stays retryable.
+      let log_path;
       try {
-        const log_path = await this.logger.append_section('今日推荐', body);
-        day.report_path = log_path;
-        await this.persist(state);
-        await this.logger.event('recommendation', { date, ids: cleaned.map(item => item.id), log_path });
-        return { date, report_path: log_path, log_dir: this.logger.dir(), recommendations: cleaned, cached: false };
+        log_path = await this.logger.append_section('今日推荐', body);
       } catch (error) {
         await this.logger?.event('error', { where: 'save', message: error?.message ?? String(error) });
-        throw Object.assign(new Error(`推荐已记录，但写入日志目录失败：${error?.message ?? error}`), { code: 'LOG_WRITE_FAILED' });
+        throw Object.assign(new Error(`写入日志目录失败，推荐未保存：${error?.message ?? error}`), { code: 'LOG_WRITE_FAILED' });
       }
+      day.recommendations = cleaned;
+      day.completed_at = this.now().toISOString();
+      day.report_path = log_path;
+      await this.persist(state);
+      await this.logger.event('recommendation', { date, ids: cleaned.map(item => item.id), log_path });
+      return { date, report_path: log_path, log_dir: this.logger.dir(), recommendations: cleaned, cached: false };
     });
   }
 }
