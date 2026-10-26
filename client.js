@@ -206,6 +206,7 @@ window.__ModuleLoader__.load({
       const dep = state.dep || {};
       const log = state.log || {};
       const schedule = state.schedule || {};
+      const recent = state.recent || [];
       const badge = (ok, okText, errText) => h(Badge, { ok, text: ok ? okText : errText });
 
       return h('div', { 'data-nd-page': '' },
@@ -222,6 +223,29 @@ window.__ModuleLoader__.load({
           status.message ? h('div', { 'data-nd-note': '' }, status.message) : null,
           h('div', { 'data-nd-note': '' }, `今日候选：${status.today_prepared ? '已准备' : '未准备'} · 已评价 ${status.today_evaluations || 0} 首 · 播放方式：静默（无声音输出）`),
         ),
+
+        recent.length ? h('div', { 'data-nd-card': '' },
+          h('div', { 'data-nd-h': '' }, '最近推荐'),
+          recent.map((day, index) => {
+            const rows = (day.recommendations ?? []).map((item, itemIndex) => h('div', { key: `rec-${day.date}-${itemIndex}`, 'data-nd-row': '', style: { gap: '8px', alignItems: 'baseline' } },
+              h('span', { style: { minWidth: '16px', fontSize: 12, color: 'var(--dsw-alias-label-tertiary,#9aa0a6)' } }, `${itemIndex + 1}.`),
+              h('a', {
+                href: item.url, target: '_blank', rel: 'noreferrer',
+                style: { flex: 1, minWidth: 0, fontSize: 13, color: 'var(--dsw-alias-accent-fg,#3b6ef6)', textDecoration: 'none' },
+              }, `${item.name}${item.artists?.length ? ` — ${item.artists.join(' / ')}` : ''}`),
+              h('span', { style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary,#9aa0a6)' } }, item.score ? `${item.score}/5` : '未评分'),
+            ));
+            const label = index === 0 ? `${day.date}（今日）` : `${day.date} · ${(day.recommendations ?? []).length} 首`;
+            if (index === 0) {
+              return h('div', { key: day.date, 'data-nd-sec': '' }, h('div', { 'data-nd-note': '' }, label), rows);
+            }
+            return h('details', { key: day.date, 'data-nd-sec': '' },
+              h('summary', { 'data-nd-note': '', style: { cursor: 'pointer' } }, label),
+              rows,
+            );
+          }),
+          h('div', { 'data-nd-note': '' }, '点歌名直接打开网易云；历史来自本地 history.json，最近 7 天。'),
+        ) : null,
 
         h('div', { 'data-nd-card': '' },
           h('div', { 'data-nd-h': '' }, '运行时间与描述'),
@@ -323,7 +347,7 @@ window.__ModuleLoader__.load({
           ),
         ) : null,
 
-        h('div', { 'data-nd-note': '' }, '所有可变项都在这里配置，立即生效并保存到本机；重启 Harness 后仍然保留。'),
+        h('div', { 'data-nd-note': '' }, '所有可变项都在这里配置，立即生效并保存到本机；重启 Harness 后仍然保留。日志目录里另有 latest.md（最新一次结果）与 index.html（可点击的历史索引），超过 30 天的记录会自动清理。'),
       );
     }
 
