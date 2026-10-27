@@ -72,6 +72,21 @@ dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily
 
 面板顶部还有一块 **「最近推荐」**：今日 3 首（带评分，点歌名直接打开网易云），以及最近 7 天的折叠历史——不用打开任何日志文件就能回看。
 
+## 唤起网易云客户端（VIP 歌曲的解法）
+
+网页版播不了 VIP 歌曲，所以「最近推荐」里的歌名改成了唤起动作：
+
+- **已安装客户端**：点击歌名 → 用自定义协议 `orpheus://song/<id>/?autoplay=1` 唤起本机网易云并播放；
+- **未安装客户端**：自动回退到网页版 `https://music.163.com/#/song?id=<id>`，面板给出「未检测到客户端，已回退网页版（VIP 歌曲可能无法播放）」的提示；
+- 每首歌右侧另有一个 **「网页」** 按钮，强制走浏览器，方便对比或在客户端异常时使用；
+- 对话里也可以直接说「打开第 2 首」（`netease_open` 工具），逻辑一致。
+
+客户端是否安装由外部证据判断：`HKCR\orpheus` / `HKCU\Software\Classes\orpheus` 协议注册表项，或常见安装路径下的 `cloudmusic.exe`；结果缓存 60 秒，不会每次刷新都查注册表。协议由客户端安装时注册，插件不代为注册。
+
+## 黑箱测试
+
+照单执行见 [docs/blackbox-test-checklist.md](docs/blackbox-test-checklist.md)：覆盖安装可见性、配置持久化、依赖、扫码登录、定时静默运行、推荐与评价、日志、异常状态、唤起/降级、边界回归。
+
 ## 静默播放与评价
 
 播放使用 `mpv --ao=null --volume=0 --mute=yes --no-video`：解码与进度照常推进，但不打开任何音频设备、不弹窗口，**全程没有声音**。

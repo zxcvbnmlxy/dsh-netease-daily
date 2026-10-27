@@ -46,7 +46,12 @@ window.__ModuleLoader__.load({
 [data-nd-warn]{background:rgba(240,160,0,.16);color:#b26b00}
 [data-nd-msg]{padding:8px 12px;border-radius:8px;font-size:12px;line-height:18px}
 [data-nd-msg][data-kind=ok]{background:rgba(52,168,83,.12);color:#2e9e50}
+[data-nd-msg][data-kind=warn]{background:rgba(240,160,0,.14);color:#b26b00}
 [data-nd-msg][data-kind=err]{background:rgba(217,48,37,.12);color:#d93025}
+[data-nd-song]{flex:1;min-width:0;text-align:left;background:none;border:0;padding:0;font:inherit;font-size:13px;color:var(--dsw-alias-accent-fg,#3b6ef6);cursor:pointer;text-decoration:none}
+[data-nd-song]:hover{text-decoration:underline}
+[data-nd-song][disabled]{opacity:.55;cursor:default;text-decoration:none}
+[data-nd-mini]{font-size:11px;color:var(--dsw-alias-label-tertiary,#9aa0a6);background:none;border:0;cursor:pointer;padding:0 2px;text-decoration:underline}
 [data-nd-qr]{width:190px;height:190px;border-radius:10px;background:#fff;padding:8px;border:1px solid rgba(128,128,128,.25)}
 [data-nd-grid]{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
 [data-nd-modal]{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9000}
@@ -172,6 +177,14 @@ window.__ModuleLoader__.load({
         return result;
       }, enable ? '每日任务已开启。' : '每日任务已停止。');
 
+      /** 点击歌曲：优先唤起网易云客户端；没有客户端时后端回退网页并说明原因。 */
+      const openTrack = (item, mode) => action('open', async () => {
+        const result = await jpost('/open-track', { track_id: item.id, mode: mode === 'web' ? 'web' : 'app' });
+        const text = result.message || (result.opened === 'app' ? '已唤起网易云音乐客户端。' : '已回退网页版。');
+        setMessage({ kind: result.opened === 'app' ? 'ok' : 'warn', text });
+        return result;
+      });
+
       const browseTo = async (target) => {
         try {
           const listing = await jget(`/picker/list${target ? `?path=${encodeURIComponent(target)}` : ''}`);
@@ -218,6 +231,7 @@ window.__ModuleLoader__.load({
             h('div', null, badge(Boolean(dep.ready), 'mpv 就绪', 'mpv 未就绪')),
             h('div', null, badge(Boolean(log.ok), '日志目录可写', `日志目录不可写：${log.error || ''}`)),
             h('div', null, badge(Boolean(schedule.active), `任务已开启（${schedule.time || ''}）`, '任务未开启')),
+            h('div', null, badge(Boolean(state.client?.ready), '网易云客户端已安装', '未检测到网易云客户端（点击会回退网页）')),
             h('div', null, badge(Boolean(state.session_bound), '会话已绑定', '会话未绑定：先在对话里调用一次 netease_status')),
           ),
           status.message ? h('div', { 'data-nd-note': '' }, status.message) : null,
@@ -229,11 +243,13 @@ window.__ModuleLoader__.load({
           recent.map((day, index) => {
             const rows = (day.recommendations ?? []).map((item, itemIndex) => h('div', { key: `rec-${day.date}-${itemIndex}`, 'data-nd-row': '', style: { gap: '8px', alignItems: 'baseline' } },
               h('span', { style: { minWidth: '16px', fontSize: 12, color: 'var(--dsw-alias-label-tertiary,#9aa0a6)' } }, `${itemIndex + 1}.`),
-              h('a', {
-                href: item.url, target: '_blank', rel: 'noreferrer',
-                style: { flex: 1, minWidth: 0, fontSize: 13, color: 'var(--dsw-alias-accent-fg,#3b6ef6)', textDecoration: 'none' },
+              h('button', {
+                'data-nd-song': '', disabled: busy === 'open',
+                title: state.client?.ready ? '点击唤起网易云客户端' : '未检测到客户端，点击会打开网页版',
+                onClick: () => openTrack(item, 'app'),
               }, `${item.name}${item.artists?.length ? ` — ${item.artists.join(' / ')}` : ''}`),
               h('span', { style: { fontSize: 11, color: 'var(--dsw-alias-label-tertiary,#9aa0a6)' } }, item.score ? `${item.score}/5` : '未评分'),
+              h('button', { 'data-nd-mini': '', title: '用浏览器打开网页版', onClick: () => openTrack(item, 'web') }, '网页'),
             ));
             const label = index === 0 ? `${day.date}（今日）` : `${day.date} · ${(day.recommendations ?? []).length} 首`;
             if (index === 0) {
@@ -244,7 +260,9 @@ window.__ModuleLoader__.load({
               rows,
             );
           }),
-          h('div', { 'data-nd-note': '' }, '点歌名直接打开网易云；历史来自本地 history.json，最近 7 天。'),
+          h('div', { 'data-nd-note': '' }, state.client?.ready
+            ? '点歌名会直接唤起网易云音乐客户端；右侧「网页」按钮强制用浏览器打开。'
+            : '未检测到网易云客户端：点歌名会回退网页版（VIP 歌曲可能无法播放）。安装客户端后即可直接唤起。'),
         ) : null,
 
         h('div', { 'data-nd-card': '' },

@@ -2,6 +2,7 @@ import { MusicService, default_data_dir } from './src/service.js';
 import { SettingsStore, normalize_time, normalize_time_zone, ensure_writable_dir } from './src/settings.js';
 import { RunLogger } from './src/logger.js';
 import { detect_player, install_player } from './src/deps.js';
+import { detect_client, open_track } from './src/netease_client.js';
 
 export const name = 'netease-daily';
 export const inject = ['tools', 'webServer'];
@@ -211,6 +212,7 @@ export function apply(ctx, config = {}) {
     const status = await service.status();
     const log = await logger.probe();
     const recent = await recent_days();
+    const client = await detect_client();
     const schedule = schedule_ctx.ctx && settings.session_id
       ? (await schedule_ctx.ctx.list({ sessionId: settings.session_id })).filter(owned)
       : [];
@@ -220,6 +222,7 @@ export function apply(ctx, config = {}) {
       dep,
       log,
       recent,
+      client,
       schedule: { active: schedule.length > 0, id: schedule[0]?.id ?? '', time: settings.daily_time, time_zone: settings.time_zone, next: schedule[0]?.scheduledAt ?? null },
       session_bound: Boolean(settings.session_id),
       picker: picker_capability(),
@@ -279,6 +282,16 @@ export function apply(ctx, config = {}) {
     rating: { type: 'integer', minimum: 1, maximum: 5, description: '可选评分。' },
     evaluation: { type: 'string', description: '中文评价。' },
   }, ['track_id', 'evaluation'], (args, exec) => service.evaluate(song_id(args.track_id), args.rating, args.evaluation, exec.signal), 60_000);
+
+  register(ctx, 'netease_open', '打开一首歌：优先唤起网易云音乐客户端，未安装客户端时回退网页版并返回提示。', {
+    track_id: id_schema,
+    mode: { type: 'string', enum: ['app', 'web'], description: '可选：app 优先唤起客户端（默认），web 强制网页版。' },
+  }, ['track_id'], async (args, exec) => {
+    await store.remember({ session_id: session_of(exec) });
+    const result = await open_track(song_id(args.track_id), { mode: args.mode === 'web' ? 'web' : 'app' });
+    await logger.event('open-track', { track_id: song_id(args.track_id), opened: result.opened, reason: result.reason });
+    return result;
+  });
 
   register(ctx, 'netease_feedback', '记录用户明确表达的歌曲偏好，只改本地数据。', {
     track_id: id_schema,
@@ -400,6 +413,15 @@ export function apply(ctx, config = {}) {
     if (path === '/settings') {
       const result = await apply_patch(body);
       return json(res, 200, { ok: true, ...result, dep });
+    }
+    if (path === '/open-track') {
+      try {
+        const result = await open_track(body.track_id, { mode: body.mode === 'web' ? 'web' : 'app' });
+        await logger.event('open-track', { track_id: String(body.track_id ?? ''), opened: result.opened, reason: result.reason });
+        return json(res, 200, { ok: result.ok !== false, ...result });
+      } catch (error) {
+        return json(res, 400, { ok: false, code: error?.code ?? 'OPEN_FAILED', message: error?.message ?? String(error) });
+      }
     }
     if (path === '/picker/pick') {
       const capability = picker_ctx.ctx?.capability?.();
