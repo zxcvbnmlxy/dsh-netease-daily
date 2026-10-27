@@ -30,9 +30,9 @@ dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily
 dsh plugin --profile <profile> add dsh-netease-daily
 ```
 
-npm 最新版本为 **0.2.1**。注意 pnpm 11 起默认 `minimumReleaseAge: 1440`（新发布的版本要满 1 天才参与按范围的解析），所以刚发布的新版本用**裸包名**可能仍解析到上一版。三种处理方式：
+npm 最新版本以 `npm view dsh-netease-daily version` 为准。注意 pnpm 11 起默认 `minimumReleaseAge: 1440`（新发布的版本要满 1 天才参与按范围的解析），所以刚发布的新版本用**裸包名**可能仍解析到上一版。三种处理方式：
 
-- 显式指定版本（立即生效）：`dsh plugin --profile <profile> add dsh-netease-daily@0.2.1`
+- 显式指定版本（立即生效）：`dsh plugin --profile <profile> add dsh-netease-daily@<版本号>`
 - 等约 1 天后裸包名自动解析到新版；
 - 或在 profile 的 `pnpm-workspace.yaml` 里设 `minimumReleaseAge: 0`（会放宽整个 profile 的供应链冷却，谨慎）。
 
@@ -80,24 +80,32 @@ npm 最新版本为 **0.2.1**。注意 pnpm 11 起默认 `minimumReleaseAge: 144
 
 面板顶部还有一块 **「最近推荐」**：今日 3 首（带评分，点歌名直接打开网易云），以及最近 7 天的折叠历史——不用打开任何日志文件就能回看。
 
-## 唤起网易云客户端（VIP 歌曲的解法）
+## 点歌直接播放（VIP 歌曲的解法）
 
-网页版播不了 VIP 歌曲，所以「最近推荐」里的歌名改成了唤起动作：
+网页版播不了 VIP 歌曲，所以「最近推荐」里的歌名改成了「打开并播放」动作。按你安装的客户端形态自动选择路径：
 
-- **已安装客户端**：点击歌名 → 用自定义协议 `orpheus://song/<id>/?autoplay=1` 唤起本机网易云并播放；
-- **未安装客户端**：自动回退到网页版 `https://music.163.com/#/song?id=<id>`，面板给出「未检测到客户端，已回退网页版（VIP 歌曲可能无法播放）」的提示；
-- 每首歌右侧另有一个 **「网页」** 按钮，强制走浏览器，方便对比或在客户端异常时使用；
-- 对话里也可以直接说「打开第 2 首」（`netease_open` 工具），逻辑一致。
+1. **经典桌面版**（`C:\Program Files\NetEase\CloudMusic\`）：
+   实测客户端 3.1.42 **不响应 `orpheus://song/<id>` 深链**（手动粘贴到浏览器也不播放），
+   所以插件改用客户端自带的 **本地调试通道（Chromium DevTools Protocol，127.0.0.1:9223）**：
+   在客户端搜索框里输入「歌名 歌手」→ 回车 → 点搜索结果的「播放」按钮，效果等同于你在客户端里手动点歌。
+   - 客户端未运行时：插件用 `--remote-debugging-port=9223` 启动它，等页面就绪后播放（约 5–10 秒）；
+   - 客户端已在运行但没有控制通道（比如你从开始菜单打开的）：插件只能唤起 + 复制歌名，并在提示里说明「关掉客户端后下次点歌即可直接播放」；
+   - 调试端口只绑定 `127.0.0.1`，不对外网开放，也不会读取账号凭证。
+2. **Microsoft Store（MSIX）版**（运行路径在 `C:\Program Files\WindowsApps\` 下）：
+   包清单里没有协议扩展、也不能带参数启动，所以**无法定位到某一首**；插件会打开应用并把「歌名 歌手」复制到剪贴板。
+3. **未安装客户端**：回退网页版 `https://music.163.com/#/song?id=<id>`，并提示 VIP 限制。
 
-客户端是否安装由外部证据判断：`HKCR\orpheus` / `HKCU\Software\Classes\orpheus` 协议注册表项、常见安装路径下的 `cloudmusic.exe`，或运行中的 `cloudmusic` 进程与开始菜单里的 Store 应用；结果缓存 60 秒，不会每次刷新都查注册表。协议由客户端安装时注册，插件不代为注册。
+每首歌右侧另有 **「网页」** 按钮，强制走浏览器；对话里也可以说「打开第 2 首」（`netease_open` 工具），逻辑一致。
 
-### Microsoft Store（MSIX）版的限制
+客户端是否安装由外部证据判断：`HKCR\orpheus` 协议注册项、`shell\open\command` 里的 exe、常见安装路径、运行中的 `cloudmusic` 进程，或开始菜单里的 Store 应用；结果缓存 60 秒。
+
+### Store 版的限制
 
 如果你装的是**微软商店版**网易云（运行路径在 `C:\Program Files\WindowsApps\` 下）：
 
 - 该版本的包清单里**没有注册 `orpheus` 深链**，也不能直接执行 exe（Windows 会拒绝），所以**无法做到"点歌名直接播放某一首"**；
 - 插件会识别到 Store 版，点击歌名时：打开网易云应用 + 把「歌名 歌手」复制到剪贴板，提示里说明原因——你到客户端里粘贴搜索即可；
-- 想要"点一下就直接播放"，需要安装[经典桌面版](https://music.163.com/download)；装好后插件会自动检测到 `orpheus` 协议并走深链，无需改配置。
+- 想要"点一下就直接播放"，需要安装[经典桌面版](https://music.163.com/download)；装好后插件会检测到它，并通过本地调试通道在客户端里搜索播放，无需改配置。
 
 ## 黑箱测试
 

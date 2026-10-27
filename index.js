@@ -227,7 +227,7 @@ export function apply(ctx, config = {}) {
       schedule: { active: schedule.length > 0, id: schedule[0]?.id ?? '', time: settings.daily_time, time_zone: settings.time_zone, next: schedule[0]?.scheduledAt ?? null },
       session_bound: Boolean(settings.session_id),
       picker: picker_capability(),
-      version: '0.2.1',
+      version: '0.2.2',
     };
   };
 
@@ -291,7 +291,12 @@ export function apply(ctx, config = {}) {
     await store.remember({ session_id: session_of(exec) });
     const track = service.cache?.get(String(args.track_id));
     const label = track ? `${track.name}${track.artists?.length ? ` ${track.artists.join(' ')}` : ''}` : '';
-    const result = await open_track(song_id(args.track_id), { mode: args.mode === 'web' ? 'web' : 'app', label });
+    const result = await open_track(song_id(args.track_id), {
+      mode: args.mode === 'web' ? 'web' : 'app',
+      label,
+      name: track?.name ?? '',
+      artist: track?.artists?.join(' ') ?? '',
+    });
     await logger.event('open-track', { track_id: song_id(args.track_id), opened: result.opened, reason: result.reason });
     return result;
   });
@@ -422,6 +427,8 @@ export function apply(ctx, config = {}) {
         const result = await open_track(body.track_id, {
           mode: body.mode === 'web' ? 'web' : 'app',
           label: typeof body.label === 'string' ? body.label.slice(0, 200) : '',
+          name: typeof body.name === 'string' ? body.name.slice(0, 200) : '',
+          artist: Array.isArray(body.artists) ? body.artists.join(' ').slice(0, 200) : (typeof body.artist === 'string' ? body.artist.slice(0, 200) : ''),
         });
         await logger.event('open-track', { track_id: String(body.track_id ?? ''), opened: result.opened, reason: result.reason });
         return json(res, 200, { ok: result.ok !== false, ...result });

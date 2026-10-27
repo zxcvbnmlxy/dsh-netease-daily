@@ -177,10 +177,10 @@ window.__ModuleLoader__.load({
         return result;
       }, enable ? '每日任务已开启。' : '每日任务已停止。');
 
-      /** 点击歌曲：经典版直接唤起并定位；Store 版只能打开应用；未安装回退网页。 */
+      /** 点击歌曲：优先在客户端里搜索并播放；失败回退唤起居中/网页。 */
       const openTrack = (item, mode) => action('open', async () => {
         const label = `${item.name}${item.artists?.length ? ` ${item.artists.join(' ')}` : ''}`;
-        const result = await jpost('/open-track', { track_id: item.id, mode: mode === 'web' ? 'web' : 'app', label });
+        const result = await jpost('/open-track', { track_id: item.id, mode: mode === 'web' ? 'web' : 'app', label, name: item.name, artists: item.artists ?? [] });
         const text = result.message || (result.opened === 'app' ? '已唤起网易云音乐客户端。' : '已回退网页版。');
         setMessage({ kind: result.opened === 'app' ? 'ok' : (result.ok ? 'warn' : 'err'), text });
         return result;
