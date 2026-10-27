@@ -1,6 +1,6 @@
 {
   "name": "dsh-netease-daily",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DeepSeek Harness 每日听歌插件：设置页配置、静默播放、按描述推荐与 AI 评价",
   "type": "module",
   "main": "index.js",

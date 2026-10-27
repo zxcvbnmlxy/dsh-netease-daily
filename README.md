@@ -81,7 +81,15 @@ dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily
 - 每首歌右侧另有一个 **「网页」** 按钮，强制走浏览器，方便对比或在客户端异常时使用；
 - 对话里也可以直接说「打开第 2 首」（`netease_open` 工具），逻辑一致。
 
-客户端是否安装由外部证据判断：`HKCR\orpheus` / `HKCU\Software\Classes\orpheus` 协议注册表项，或常见安装路径下的 `cloudmusic.exe`；结果缓存 60 秒，不会每次刷新都查注册表。协议由客户端安装时注册，插件不代为注册。
+客户端是否安装由外部证据判断：`HKCR\orpheus` / `HKCU\Software\Classes\orpheus` 协议注册表项、常见安装路径下的 `cloudmusic.exe`，或运行中的 `cloudmusic` 进程与开始菜单里的 Store 应用；结果缓存 60 秒，不会每次刷新都查注册表。协议由客户端安装时注册，插件不代为注册。
+
+### Microsoft Store（MSIX）版的限制
+
+如果你装的是**微软商店版**网易云（运行路径在 `C:\Program Files\WindowsApps\` 下）：
+
+- 该版本的包清单里**没有注册 `orpheus` 深链**，也不能直接执行 exe（Windows 会拒绝），所以**无法做到"点歌名直接播放某一首"**；
+- 插件会识别到 Store 版，点击歌名时：打开网易云应用 + 把「歌名 歌手」复制到剪贴板，提示里说明原因——你到客户端里粘贴搜索即可；
+- 想要"点一下就直接播放"，需要安装[经典桌面版](https://music.163.com/download)；装好后插件会自动检测到 `orpheus` 协议并走深链，无需改配置。
 
 ## 黑箱测试
 

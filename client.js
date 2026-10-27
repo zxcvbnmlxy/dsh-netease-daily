@@ -177,11 +177,12 @@ window.__ModuleLoader__.load({
         return result;
       }, enable ? '每日任务已开启。' : '每日任务已停止。');
 
-      /** 点击歌曲：优先唤起网易云客户端；没有客户端时后端回退网页并说明原因。 */
+      /** 点击歌曲：经典版直接唤起并定位；Store 版只能打开应用；未安装回退网页。 */
       const openTrack = (item, mode) => action('open', async () => {
-        const result = await jpost('/open-track', { track_id: item.id, mode: mode === 'web' ? 'web' : 'app' });
+        const label = `${item.name}${item.artists?.length ? ` ${item.artists.join(' ')}` : ''}`;
+        const result = await jpost('/open-track', { track_id: item.id, mode: mode === 'web' ? 'web' : 'app', label });
         const text = result.message || (result.opened === 'app' ? '已唤起网易云音乐客户端。' : '已回退网页版。');
-        setMessage({ kind: result.opened === 'app' ? 'ok' : 'warn', text });
+        setMessage({ kind: result.opened === 'app' ? 'ok' : (result.ok ? 'warn' : 'err'), text });
         return result;
       });
 
@@ -231,7 +232,9 @@ window.__ModuleLoader__.load({
             h('div', null, badge(Boolean(dep.ready), 'mpv 就绪', 'mpv 未就绪')),
             h('div', null, badge(Boolean(log.ok), '日志目录可写', `日志目录不可写：${log.error || ''}`)),
             h('div', null, badge(Boolean(schedule.active), `任务已开启（${schedule.time || ''}）`, '任务未开启')),
-            h('div', null, badge(Boolean(state.client?.ready), '网易云客户端已安装', '未检测到网易云客户端（点击会回退网页）')),
+            h('div', null, badge(Boolean(state.client?.ready),
+              state.client?.kind === 'store' ? '网易云（Store 版，不能定位歌曲）' : '网易云客户端已安装（支持深链）',
+              '未检测到网易云客户端（点击会回退网页）')),
             h('div', null, badge(Boolean(state.session_bound), '会话已绑定', '会话未绑定：先在对话里调用一次 netease_status')),
           ),
           status.message ? h('div', { 'data-nd-note': '' }, status.message) : null,
@@ -261,7 +264,9 @@ window.__ModuleLoader__.load({
             );
           }),
           h('div', { 'data-nd-note': '' }, state.client?.ready
-            ? '点歌名会直接唤起网易云音乐客户端；右侧「网页」按钮强制用浏览器打开。'
+            ? (state.client?.kind === 'store'
+              ? '检测到 Microsoft Store 版网易云：点歌名只能打开应用、无法定位到具体歌曲（该版本未注册 orpheus 深链）。想要点击即播放，请安装经典桌面版；也可用右侧「网页」打开。'
+              : '点歌名会直接唤起网易云音乐客户端并播放该歌曲；右侧「网页」按钮强制用浏览器打开。')
             : '未检测到网易云客户端：点歌名会回退网页版（VIP 歌曲可能无法播放）。安装客户端后即可直接唤起。'),
         ) : null,
 

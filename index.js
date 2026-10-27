@@ -227,7 +227,7 @@ export function apply(ctx, config = {}) {
       schedule: { active: schedule.length > 0, id: schedule[0]?.id ?? '', time: settings.daily_time, time_zone: settings.time_zone, next: schedule[0]?.scheduledAt ?? null },
       session_bound: Boolean(settings.session_id),
       picker: picker_capability(),
-      version: '0.2.0',
+      version: '0.2.1',
     };
   };
 
@@ -289,7 +289,9 @@ export function apply(ctx, config = {}) {
     mode: { type: 'string', enum: ['app', 'web'], description: '可选：app 优先唤起客户端（默认），web 强制网页版。' },
   }, ['track_id'], async (args, exec) => {
     await store.remember({ session_id: session_of(exec) });
-    const result = await open_track(song_id(args.track_id), { mode: args.mode === 'web' ? 'web' : 'app' });
+    const track = service.cache?.get(String(args.track_id));
+    const label = track ? `${track.name}${track.artists?.length ? ` ${track.artists.join(' ')}` : ''}` : '';
+    const result = await open_track(song_id(args.track_id), { mode: args.mode === 'web' ? 'web' : 'app', label });
     await logger.event('open-track', { track_id: song_id(args.track_id), opened: result.opened, reason: result.reason });
     return result;
   });
@@ -417,7 +419,10 @@ export function apply(ctx, config = {}) {
     }
     if (path === '/open-track') {
       try {
-        const result = await open_track(body.track_id, { mode: body.mode === 'web' ? 'web' : 'app' });
+        const result = await open_track(body.track_id, {
+          mode: body.mode === 'web' ? 'web' : 'app',
+          label: typeof body.label === 'string' ? body.label.slice(0, 200) : '',
+        });
         await logger.event('open-track', { track_id: String(body.track_id ?? ''), opened: result.opened, reason: result.reason });
         return json(res, 200, { ok: result.ok !== false, ...result });
       } catch (error) {

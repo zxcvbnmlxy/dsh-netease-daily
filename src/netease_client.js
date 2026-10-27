@@ -5,9 +5,14 @@ import { join } from 'node:path';
 /**
  * 网易云音乐客户端的唤起与降级。
  *
- * 客户端注册的自定义协议是 `orpheus://song/<id>/`（社区通用，加 `?autoplay=1` 可直接播放）。
- * 是否安装只能靠外部证据判断：协议注册表项或客户端可执行文件。
- * 未安装时回退到网页版 https://music.163.com/#/song?id=<id>，并把原因返回给调用方。
+ * 两种常见安装形态：
+ *   1. 经典桌面版：安装时注册 `orpheus://` 自定义协议，可直接用深链定位歌曲。
+ *   2. Microsoft Store（MSIX）版：整包运行在 WindowsApps 下，清单里没有协议扩展，
+ *      不能直接执行 exe（Access denied），只能用 `shell:AppsFolder\<AppID>` 启动应用，
+ *      无法定位到某一首歌——此时如实降级并提示。
+ *
+ * 是否安装靠外部证据判断：协议注册项、经典路径、运行中的 cloudmusic 进程、Store 应用清单。
+ * 未安装时回退网页 https://music.163.com/#/song?id=<id>。
  */
 
 const IS_WIN = process.platform === 'win32';
@@ -22,6 +27,10 @@ function run(command, args, timeout_ms = 12_000) {
       resolve({ ok: !error, code: error?.code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') });
     });
   });
+}
+
+function powershell(script, timeout_ms = 20_000) {
+  return run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], timeout_ms);
 }
 
 export function deep_link(track_id) { return `${PROTOCOL}://song/${track_id}/?autoplay=1`; }
@@ -40,6 +49,20 @@ function exe_candidates() {
   const list = [];
   for (const root of roots) for (const parts of relative) list.push(join(root, ...parts));
   return list;
+}
+
+/** 运行中的客户端：经典版给 exe 路径；Store 版路径含 WindowsApps。 */
+async function running_client() {
+  const result = await powershell("$p = Get-Process cloudmusic -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1; if ($p) { $p.Path }");
+  const path = result.stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? '';
+  return path || '';
+}
+
+/** Store（MSIX）应用：用开始菜单里的 AppID 启动，无法传歌曲参数。 */
+async function store_client() {
+  const result = await powershell("$a = Get-StartApps -ErrorAction SilentlyContinue | Where-Object { $_.AppID -like '*!CLOUDMUSIC' } | Select-Object -First 1; if ($a) { $a.AppID }");
+  const appid = result.stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? '';
+  return appid ? { appid } : null;
 }
 
 /** 返回 { ready, kind, detail, tried, hint }；结果缓存 60 秒避免面板轮询反复查注册表。 */
@@ -64,10 +87,22 @@ export async function detect_client({ force = false } = {}) {
         return cache.value;
       }
     }
-    const uninstall = await run('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall', '/s', '/f', 'CloudMusic', '/d']);
-    tried.push(`uninstall=CloudMusic:${uninstall.ok ? 'found' : 'missing'}`);
-    if (uninstall.ok && /CloudMusic/i.test(uninstall.stdout)) {
-      cache = { at: Date.now(), value: { ready: true, kind: 'uninstall-entry', detail: 'uninstall registry', tried } };
+    const running = await running_client();
+    tried.push(`running=${running || 'none'}`);
+    if (running && /cloudmusic\.exe$/i.test(running)) {
+      const store = /\\WindowsApps\\/i.test(running);
+      cache = {
+        at: Date.now(),
+        value: store
+          ? { ready: true, kind: 'store', detail: running, tried }
+          : { ready: true, kind: 'exe', detail: running, tried },
+      };
+      return cache.value;
+    }
+    const store = await store_client();
+    tried.push(`start-app=${store ? store.appid : 'missing'}`);
+    if (store) {
+      cache = { at: Date.now(), value: { ready: true, kind: 'store', detail: store.appid, tried } };
       return cache.value;
     }
   } else {
@@ -107,14 +142,54 @@ export function open_url(url) {
   return { ok: true };
 }
 
+/** 经典版：exe 支持直接以深链参数启动（协议未注册时用这条路径）。 */
+function launch_exe(exe, url) {
+  try {
+    const child = spawn(exe, [url], { windowsHide: true, detached: true, stdio: 'ignore', shell: false });
+    child.once('error', () => {});
+    child.unref();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error?.message ?? String(error) };
+  }
+}
+
+/** 把歌名写到剪贴板（等待 PowerShell 完成，避免竞态）。 */
+function set_clipboard(label) {
+  return new Promise(resolve => {
+    try {
+      const safe = String(label).replace(/'/g, "''").slice(0, 200);
+      const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Set-Clipboard -Value '${safe}'`], { windowsHide: true, stdio: 'ignore' });
+      child.once('close', code => resolve(code === 0));
+      child.once('error', () => resolve(false));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/** Store 版：只能启动应用本身，无法定位歌曲；顺手把歌名复制到剪贴板。 */
+async function launch_store(appid, label) {
+  if (label) await set_clipboard(label);
+  try {
+    const child = spawn('explorer.exe', [`shell:AppsFolder\\${appid}`], { windowsHide: true, detached: true, stdio: 'ignore', shell: false });
+    child.once('error', () => {});
+    child.unref();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error?.message ?? String(error) };
+  }
+}
+
 /**
- * 打开一首歌：默认优先唤起客户端，没有客户端或显式 mode:'web' 时回退网页。
- * 返回 { opened: 'app'|'web', url, reason, message, client }。
+ * 打开一首歌：经典版优先深链；Store 版只能打开应用本身并如实说明；
+ * 完全未安装时回退网页。返回 { opened, url, reason, ok, client, message }。
  */
-export async function open_track(track_id, { mode = 'app' } = {}) {
+export async function open_track(track_id, { mode = 'app', label = '' } = {}) {
   const id = String(track_id);
   if (!/^[1-9]\d{0,16}$/.test(id)) throw Object.assign(new Error('歌曲 ID 必须是正整数。'), { code: 'INVALID_ID' });
   const client = await detect_client({ force: true });
+
   if (mode === 'web' || !client.ready) {
     const url = web_link(id);
     const opened = open_url(url);
@@ -127,14 +202,28 @@ export async function open_track(track_id, { mode = 'app' } = {}) {
       message: mode === 'web' ? '已用浏览器打开网页版。' : (client.hint ?? '未检测到客户端，已回退网页版。'),
     };
   }
+
   const url = deep_link(id);
-  const opened = open_url(url);
+  if (client.kind === 'protocol') {
+    const opened = open_url(url);
+    return { opened: 'app', url, reason: opened.ok ? 'APP_LAUNCHED' : 'APP_LAUNCH_FAILED', ok: opened.ok, client, message: opened.ok ? '已唤起网易云音乐客户端。' : `唤起客户端失败：${opened.error ?? '未知原因'}，可改用「网页」打开。` };
+  }
+  if (client.kind === 'exe') {
+    const launched = launch_exe(client.detail, url);
+    if (launched.ok) return { opened: 'app', url, reason: 'APP_LAUNCHED_WITH_ARG', ok: true, client, message: '已用客户端程序打开该歌曲。' };
+    const opened = open_url(web_link(id));
+    return { opened: 'web', url: web_link(id), reason: 'APP_LAUNCH_FAILED', ok: opened.ok, client, message: '客户端启动失败，已回退网页版。' };
+  }
+  // Store（MSIX）版：没有注册 orpheus 协议，只能打开应用；顺手复制歌名方便粘贴搜索。
+  const launched = await launch_store(client.detail, label);
   return {
-    opened: 'app',
+    opened: 'app-degraded',
     url,
-    reason: opened.ok ? 'APP_LAUNCHED' : 'APP_LAUNCH_FAILED',
-    ok: opened.ok,
+    reason: launched.ok ? 'STORE_APP_ONLY' : 'STORE_LAUNCH_FAILED',
+    ok: launched.ok,
     client,
-    message: opened.ok ? '已唤起网易云音乐客户端。' : `唤起客户端失败：${opened.error ?? '未知原因'}，可再点“网页版”打开。`,
+    message: launched.ok
+      ? `已打开网易云音乐（Microsoft Store 版不支持按歌曲深链定位${label ? '，歌名已复制到剪贴板' : ''}；在客户端里粘贴搜索即可。想要点击即播放请安装经典桌面版）。`
+      : `打开 Store 版客户端失败：${launched.error ?? '未知原因'}，可改用「网页」打开。`,
   };
 }
