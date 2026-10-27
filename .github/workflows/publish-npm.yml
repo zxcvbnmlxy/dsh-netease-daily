@@ -1,11 +1,14 @@
 name: publish-npm
 
-# 发布方式 B：npm Trusted Publishing（OIDC，无需 token / 2FA）
-# 需要在 npm 包设置里配置 Trusted Publisher：
-#   Package → Settings → Trusted Publisher → GitHub Actions
-#   Repository: zxcvbnmlxy/dsh-netease-daily
-#   Workflow filename: publish-npm.yml
-# 之后打 tag 或手动触发即可发布，npm 会校验 OIDC 身份并生成 provenance。
+# 发布方式：npm Trusted Publishing（OIDC，无需 token、无需 2FA 提示）
+#
+# 一次性配置（账号本人执行，npm >= 11.15）：
+#   npm trust github --file=publish-npm.yml \
+#     --repository=zxcvbnmlxy/dsh-netease-daily --allow-publish
+# 之后推 tag 即可发布（工作流会生成 provenance）。
+#
+# 注意：这里刻意不设置 setup-node 的 registry-url、也不注入 NODE_AUTH_TOKEN，
+# 否则 npm 会优先用占位 token 而跳过 OIDC，典型症状就是发布时 404。
 
 on:
   push:
@@ -26,10 +29,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
 
-      - name: Upgrade npm (trusted publishing needs npm >= 11.5)
-        run: npm install -g npm@latest
+      - name: Upgrade npm for OIDC (runners ship npm 10.x)
+        run: npm install -g npm@^11.15.0
 
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
