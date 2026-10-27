@@ -227,7 +227,7 @@ export function apply(ctx, config = {}) {
       schedule: { active: schedule.length > 0, id: schedule[0]?.id ?? '', time: settings.daily_time, time_zone: settings.time_zone, next: schedule[0]?.scheduledAt ?? null },
       session_bound: Boolean(settings.session_id),
       picker: picker_capability(),
-      version: '0.2.2',
+      version: '0.2.3',
     };
   };
 
