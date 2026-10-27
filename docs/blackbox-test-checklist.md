@@ -104,6 +104,23 @@
 | I4 | 对话里说「打开第 2 首」 | 走同样逻辑：客户端优先，否则网页回退并说明 | P/F |
 | I5 | 观察链接 | 唤起使用 `orpheus://song/<id>/`，回退使用 `https://music.163.com/#/song?id=<id>` | P/F |
 
+**在没有安装客户端时验证 I1（可回滚的测试夹具）**
+
+```powershell
+# 1) 临时注册一个假 orpheus 协议，处理器把收到的 URL 写进标记文件
+reg add "HKCU\Software\Classes\orpheus" /ve /d "URL:orpheus Protocol" /f
+reg add "HKCU\Software\Classes\orpheus" /v "URL Protocol" /d "" /f
+reg add "HKCU\Software\Classes\orpheus\shell\open\command" /ve /d "cmd /c echo %1 > \"%TEMP%\orpheus-test.txt\"" /f
+# 2) 在面板点一次歌名（或在对话里说「打开某首歌」）
+# 3) 检查标记文件内容应为：orpheus://song/<id>/?autoplay=1
+Get-Content "$env:TEMP\orpheus-test.txt"
+# 4) 清理（务必执行）
+reg delete "HKCU\Software\Classes\orpheus" /f
+Remove-Item "$env:TEMP\orpheus-test.txt" -Force -ErrorAction SilentlyContinue
+```
+
+预期：标记文件里正是 `orpheus://song/<id>/?autoplay=1`，且面板提示「已唤起网易云音乐客户端」——说明深链拼装与系统协议调用都正确；之后面板状态应恢复「未检测到客户端」。
+
 ## 10. 边界与回归
 
 | ID | 步骤 | 预期 | 判定 |

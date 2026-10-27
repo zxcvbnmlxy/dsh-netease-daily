@@ -114,7 +114,7 @@ export function open_url(url) {
 export async function open_track(track_id, { mode = 'app' } = {}) {
   const id = String(track_id);
   if (!/^[1-9]\d{0,16}$/.test(id)) throw Object.assign(new Error('歌曲 ID 必须是正整数。'), { code: 'INVALID_ID' });
-  const client = await detect_client();
+  const client = await detect_client({ force: true });
   if (mode === 'web' || !client.ready) {
     const url = web_link(id);
     const opened = open_url(url);
