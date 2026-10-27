@@ -8,10 +8,10 @@
 
 已针对 Harness Desktop **0.2.1-rc.2** 的真实工具和排程接口编写。使用 Node.js 22.19+（建议 24），无需另填 DeepSeek API Key，使用当前 Harness 会话的模型。
 
-### 从 GitHub 安装（推荐，0.2.0）
+### 从 GitHub 安装（开发版 / 最新未发布代码）
 
 ```powershell
-dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily#333d283
+dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily#9843d6f
 ```
 
 或安装不带固定提交的最新 main：
@@ -24,11 +24,19 @@ dsh plugin --profile <profile> add github:zxcvbnmlxy/dsh-netease-daily
 
 > 安装 bundle `github:zxcvbnmlxy/dsh-netease-daily`，然后确认 `netease_status` 工具可用。
 
-### 关于 npm
+### 从 npm 安装
 
-`dsh-netease-daily` 在 npm 上只到 **0.1.2**（旧版：无设置页、试听会外放声音）。0.2.0 起请用上面的 GitHub 方式安装；npm 发布受账号 2FA 策略限制，暂时不更新。
+```powershell
+dsh plugin --profile <profile> add dsh-netease-daily
+```
 
-市场登记：<https://dsh-plugin.market/plugin/zxcvbnmlxy/dsh-netease-daily>（扫描提交 `333d283`）。
+npm 最新版本为 **0.2.1**。注意 pnpm 11 起默认 `minimumReleaseAge: 1440`（新发布的版本要满 1 天才参与按范围的解析），所以刚发布的新版本用**裸包名**可能仍解析到上一版。三种处理方式：
+
+- 显式指定版本（立即生效）：`dsh plugin --profile <profile> add dsh-netease-daily@0.2.1`
+- 等约 1 天后裸包名自动解析到新版；
+- 或在 profile 的 `pnpm-workspace.yaml` 里设 `minimumReleaseAge: 0`（会放宽整个 profile 的供应链冷却，谨慎）。
+
+市场登记：<https://dsh-plugin.market/plugin/zxcvbnmlxy/dsh-netease-daily>。
 
 ### 从本地目录安装（开发版）
 
