@@ -21,6 +21,7 @@ const PROTOCOL = 'orpheus';
 const CACHE_MS = 60_000;
 
 let cache = { at: 0, value: null };
+let open_in_flight = false;
 
 function run(command, args, timeout_ms = 12_000) {
   return new Promise(resolve => {
@@ -215,6 +216,25 @@ async function wait_probe(port, timeout_ms = 20_000) {
 export async function open_track(track_id, { mode = 'app', label = '', name = '', artist = '' } = {}) {
   const id = String(track_id);
   if (!/^[1-9]\d{0,16}$/.test(id)) throw Object.assign(new Error('歌曲 ID 必须是正整数。'), { code: 'INVALID_ID' });
+  if (open_in_flight) {
+    return {
+      opened: 'busy',
+      url: web_link(id),
+      reason: 'BUSY',
+      ok: false,
+      client: cache.value ?? null,
+      message: '上一首还在打开中，请稍等一两秒再点。',
+    };
+  }
+  open_in_flight = true;
+  try {
+    return await open_track_locked(id, { mode, label, name, artist });
+  } finally {
+    open_in_flight = false;
+  }
+}
+
+async function open_track_locked(id, { mode = 'app', label = '', name = '', artist = '' } = {}) {
   const client = await detect_client({ force: true });
   const song_name = String(name || '').trim();
   const song_artist = String(artist || '').trim();
@@ -258,8 +278,12 @@ export async function open_track(track_id, { mode = 'app', label = '', name = ''
       page = (await wait_probe(DEFAULT_PORT)) ? await probe(DEFAULT_PORT) : null;
     }
     if (page) {
-      const played = await play_by_name({ name: search_text, artist: song_artist, port: DEFAULT_PORT }).catch(() => null);
-      if (played?.ok && (played.changed || played.playing_now)) {
+      // 硬超时：客户端卡住/页面异常时最多等 15 秒，超时立即回退，避免请求被无限期挂起
+      const played = await Promise.race([
+        Promise.resolve(play_by_name({ name: search_text, artist: song_artist, port: DEFAULT_PORT })).catch(() => null),
+        new Promise(resolve => setTimeout(() => resolve(null), 15_000)),
+      ]);
+      if (played?.ok) {
         return {
           opened: 'app',
           url,

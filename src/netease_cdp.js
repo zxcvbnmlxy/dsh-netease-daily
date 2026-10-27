@@ -80,12 +80,12 @@ export async function play_by_name({ name, artist = '', port = DEFAULT_PORT }) {
   const client = await connect(page.webSocketDebuggerUrl);
   const label = [name, artist].filter(Boolean).join(' ');
   try {
-    // 冷启动时页面可能还没渲染出搜索框，先等它就绪
+    // 冷启动时页面可能还没渲染出搜索框，先等它就绪（最多 8 秒）
     let ready = false;
-    for (let i = 0; i < 40; i += 1) {
+    for (let i = 0; i < 20; i += 1) {
       ready = Boolean(await client.evaluate(`Boolean(document.querySelector('input.cmd-input'))`));
       if (ready) break;
-      await sleep(500);
+      await sleep(400);
     }
     if (!ready) return { ok: false, reason: 'NOT_READY' };
     const before = await client.evaluate('localStorage.getItem("lastPlaying")');
@@ -104,67 +104,53 @@ export async function play_by_name({ name, artist = '', port = DEFAULT_PORT }) {
     }
     // 等搜索结果里出现歌名，并且出现可点击的「播放」按钮
     let found = false;
-    let rect = null;
     for (let i = 0; i < 40; i += 1) {
-      await sleep(400);
+      await sleep(250);
       const state = await client.evaluate(`(() => {
         const text = document.body.innerText || '';
-        const name = ${JSON.stringify(name)};
         const buttons = [...document.querySelectorAll('*')].filter(element =>
           element.children.length === 0 && (element.textContent || '').trim() === '播放' &&
-          !element.closest('[class*=PlayerContainer]'));
-        let rect = null;
-        for (const element of buttons) {
-          const box = element.getBoundingClientRect();
-          if (box.width > 0 && box.height > 0 && box.y < window.innerHeight * 0.75) {
-            rect = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-            break;
-          }
-        }
-        return { hasName: text.includes(name), rect };
+          !element.closest('[class*=PlayerContainer]') && element.getBoundingClientRect().width > 0);
+        return { hasName: text.includes(${JSON.stringify(name)}), hasButton: buttons.length > 0 };
       })()`);
-      if (state?.hasName && state?.rect) {
-        found = true;
-        rect = state.rect;
-        break;
-      }
       if (state?.hasName) found = true;
+      if (state?.hasName && state?.hasButton) break;
     }
-    // 用真实鼠标点击搜索结果顶部的「播放」按钮
-    if (rect) {
-      await client.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x: rect.x, y: rect.y });
-      await client.input('Input.dispatchMouseEvent', { type: 'mousePressed', x: rect.x, y: rect.y, button: 'left', clickCount: 1 });
-      await client.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rect.x, y: rect.y, button: 'left', clickCount: 1 });
-    } else {
-      // 兜底：直接点第一个含歌名的结果行
-      await client.evaluate(`(() => {
-        const target = ${JSON.stringify(name)};
-        const leaf = [...document.querySelectorAll('*')].find(element =>
-          element.children.length === 0 && (element.textContent || '').trim() === target);
-        if (!leaf) return false;
-        let row = leaf;
-        for (let i = 0; i < 6 && row; i += 1) {
-          if (String(row.className).includes('item') || row.getAttribute('role') === 'button' || row.tagName === 'LI') break;
-          row = row.parentElement;
-        }
-        (row || leaf).click();
-        return true;
+    const wait_changed = async (limit) => {
+      for (let i = 0; i < limit; i += 1) {
+        await sleep(300);
+        const after = await client.evaluate('localStorage.getItem("lastPlaying")');
+        if (before !== after) return true;
+      }
+      return false;
+    };
+    // 首选 JS 点击（快）；点完确认没有切换播放再用真实鼠标兜底
+    const clicked = Boolean(await client.evaluate(`(() => {
+      const button = [...document.querySelectorAll('*')].find(element =>
+        element.children.length === 0 && (element.textContent || '').trim() === '播放' &&
+        !element.closest('[class*=PlayerContainer]') && element.getBoundingClientRect().width > 0);
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`));
+    let changed = clicked ? await wait_changed(6) : false; // 最多 1.8 秒
+    if (!changed) {
+      const box = await client.evaluate(`(() => {
+        const button = [...document.querySelectorAll('*')].find(element =>
+          element.children.length === 0 && (element.textContent || '').trim() === '播放' &&
+          !element.closest('[class*=PlayerContainer]') && element.getBoundingClientRect().width > 0);
+        if (!button) return null;
+        const rect = button.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
       })()`);
+      if (box) {
+        await client.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
+        await client.input('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+        await client.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+        changed = await wait_changed(10);
+      }
     }
-    // 轮询确认播放已开始（lastPlaying 变化 / 出现暂停态）
-    let changed = false;
-    let playing_now = false;
-    for (let i = 0; i < 20; i += 1) {
-      await sleep(400);
-      const after = await client.evaluate('localStorage.getItem("lastPlaying")');
-      playing_now = Boolean(await client.evaluate(`(() => {
-        const text = document.body.innerText || '';
-        return text.includes(${JSON.stringify(name)}) && /暂停/.test(text);
-      })()`));
-      changed = before !== after;
-      if (changed || playing_now) break;
-    }
-    return { ok: changed || playing_now, found, changed, playing_now: Boolean(playing_now) };
+    return { ok: clicked || changed, found, changed, clicked };
   } finally {
     client.close();
   }
